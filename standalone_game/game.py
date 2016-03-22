@@ -34,7 +34,7 @@ class Brain:
 				else:
 					end_index += self.layers[i-1].n_neurons+1
 				currentLayer.neurons.append(Neuron(individual[index:end_index]))
-                index = end_index
+                		index = end_index
 	
 	def evaluate(self, givenInputs):
 
@@ -211,14 +211,17 @@ def mutate(individual, indpb = .05):
                 individual[i] += n
         return individual,
 
-def crossOver(individual1, individual2):
-    rand = random.randint(0, len(individual1)-1)
-    for i in range(rand, len(individual1)):
-        first = individual1[i]
-        second = individual2[i]
-        individual1[i] = second
-        individual2[i] = first
-    return individual1, individual2
+def crossOver(individual1, individual2, alpha=.5):
+    p = .1
+    gamma = (1.+2.*alpha)*random.random()-alpha
+    for i in range(len(individual1)):
+	first = individual1[i]
+	second = individual2[i]
+	if p>random.uniform(0,1):
+		individual1[i] = gamma*second + (1.-gamma)*first
+        	individual2[i] = gamma*first + (1.-gamma)*second
+    return individual1,individual2
+	
 
 def createPop(initRepeat, nType, individual, game):
 
@@ -228,7 +231,7 @@ def createPop(initRepeat, nType, individual, game):
 	for i in range(len(population)):
 		game.add_agent(Brain(population[i]))
 	
-	game.game_loop()
+	game.game_loop(display=False)
 	
 	game.generation +=1
 
@@ -370,7 +373,7 @@ if __name__ == '__main__':
     toolbox.register("select", tools.selTournament, tournsize=3)
 
     pop = toolbox.population()
-    result = modifiedEASimple(pop, toolbox, cxpb=.5, mutpb=.2, ngen=100, game = g, verbose = False)
+    result = modifiedEASimple(pop, toolbox, cxpb=.5, mutpb=.2, ngen=50, game = g, verbose = False)
 	
     g.reset()
 

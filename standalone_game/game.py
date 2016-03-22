@@ -3,9 +3,92 @@ import pygame
 import math
 import time
 import util
+import random
 import config as c
+from deap import algorithms, base, creator, tools
 from agent import Agent as A
 from target import Target as T
+
+class Brain:
+
+	n_hiddenLayers = 1
+
+	
+	def __init__(self, individual):
+		
+		self.weights = []
+		for i in range(len(individual)):
+			self.weights.append(individual[i])
+		self.layers = []
+		for i in range(Brain.n_hiddenLayers):
+			self.layers.append(neuronLayer())
+		self.layers.append(neuronLayer())
+		self.layers[-1].n_neurons = 2 #This is the output layer
+		index = 0
+		for i in range(len(self.layers)):
+			currentLayer = self.layers[i]
+			for j in range(currentLayer.n_neurons):
+				end_index = index
+				if i==0:
+					end_index += 5
+				else:
+					end_index += self.layers[i-1].n_neurons+1
+				currentLayer.neurons.append(Neuron(individual[index:end_index]))
+                index = end_index
+	
+	def evaluate(self, givenInputs):
+
+		outputs = []
+		inputs = []
+		for i in range(len(givenInputs)):
+		    inputs.append(givenInputs[i])
+		inputs.append(1)
+		for i in range(self.layers[0].n_neurons):
+		    currentNeuron = self.layers[0].neurons[i]
+		    outputs.append(currentNeuron.totalOutput(inputs))
+
+		for i in range(1,len(self.layers)):
+		    new_outputs = []
+		    for j in range(self.layers[i].n_neurons):
+		        currentNeuron = self.layers[i].neurons[j]
+		        new_outputs.append(currentNeuron.totalOutput(outputs))
+		    outputs = new_outputs
+
+		return outputs
+
+
+
+			
+		
+
+class Neuron:
+	
+	def __init__(self, inputWeights):
+		self.weights = []
+		for i in range(len(inputWeights)):
+			self.weights.append(inputWeights[i])
+        	self.output = 0
+
+    	def totalOutput(self, inputs):
+        	totalInput = 0
+		for i in range(len(inputs)):
+		    totalInput += self.weights[i]*inputs[i]
+		totalInput += self.weights[-1]
+		return sigmoid(totalInput)
+
+
+
+class neuronLayer:
+
+	
+	def __init__(self):
+		self.n_neurons = 3
+		self.neurons = []
+		
+
+def sigmoid(x):
+	
+	return 1/(1+math.exp(-x))
 
 class Game:
     def __init__(self):
@@ -37,7 +120,7 @@ class Game:
             for i,weight in enumerate(a.brain.weights):
                 if weight != ind[i]:
                     continue
-                return a.fitness
+                return (a.fitness,)
         return None
 
     def game_loop(self, display=True):
@@ -98,13 +181,201 @@ class Game:
         print c.game['g_name'],
         print "\tGEN.: " + str(self.generation),
         print "\tTIME: " + str(time.clock()) + '\n'
+	
+	agents_string = ""
 
-        for a in self.agents:
+        '''for a in self.agents:
             print "AGENT " + repr(a.number).rjust(2) + ": ",
             print "FITN.:" + repr(a.fitness).rjust(5)
+	'''
+	index = 0
+	for a in self.agents:
+		agents_string += "AGENT " + repr(a.number).rjust(2) + ": " + "FITN.:" + repr(a.fitness).rjust(5)
+		if index%2==1:
+			agents_string+="\n"
+		else:
+			agents_string += "      "
+		index+=1
+	print agents_string
 
 # run the game without GA and ANN
+def fitnessFunction(game,individual):
+    
+    return game.get_ind_fitness(individual)
+
+def mutate(individual, indpb = .05):
+        p = indpb
+        for i in range(len(individual)):
+            if p>=random.random():
+                n = random.uniform(-1,1)
+                individual[i] += n
+        return individual,
+
+def crossOver(individual1, individual2):
+    rand = random.randint(0, len(individual1)-1)
+    for i in range(rand, len(individual1)):
+        first = individual1[i]
+        second = individual2[i]
+        individual1[i] = second
+        individual2[i] = first
+    return individual1, individual2
+
+def createPop(initRepeat, nType, individual, game):
+
+	population = initRepeat(nType,individual,n=c.game['n_agents'])
+	if len(game.agents)==c.game['n_agents']:
+        	game.reset()
+	for i in range(len(population)):
+		game.add_agent(Brain(population[i]))
+	
+	game.game_loop()
+	
+	game.generation +=1
+
+	for a in game.agents:
+            print "AGENT " + repr(a.number).rjust(2) + ": ",
+            print "FITN.:" + repr(a.fitness).rjust(5)
+ 
+	return population
+
+def modifiedEASimple(population, toolbox, cxpb, mutpb, ngen, game, stats=None,
+             halloffame=None, verbose=__debug__):
+
+    """This algorithm reproduce the simplest evolutionary algorithm as
+    presented in chapter 7 of [Back2000]_.
+    
+    :param population: A list of individuals.
+    :param toolbox: A :class:`~deap.base.Toolbox` that contains the evolution
+                    operators.
+    :param cxpb: The probability of mating two individuals.
+    :param mutpb: The probability of mutating an individual.
+    :param ngen: The number of generation.
+    :param stats: A :class:`~deap.tools.Statistics` object that is updated
+                  inplace, optional.
+    :param halloffame: A :class:`~deap.tools.HallOfFame` object that will
+                       contain the best individuals, optional.
+    :param verbose: Whether or not to log the statistics.
+    :returns: The final population and a :class:`~deap.tools.Logbook`
+              with the statistics of the evolution.
+    
+    The algorithm takes in a population and evolves it in place using the
+    :meth:`varAnd` method. It returns the optimized population and a
+    :class:`~deap.tools.Logbook` with the statistics of the evolution (if
+    any). The logbook will contain the generation number, the number of
+    evalutions for each generation and the statistics if a
+    :class:`~deap.tools.Statistics` if any. The *cxpb* and *mutpb* arguments
+    are passed to the :func:`varAnd` function. The pseudocode goes as follow
+    ::
+
+        evaluate(population)
+        for g in range(ngen):
+            population = select(population, len(population))
+            offspring = varAnd(population, toolbox, cxpb, mutpb)
+            evaluate(offspring)
+            population = offspring
+
+    As stated in the pseudocode above, the algorithm goes as follow. First, it
+    evaluates the individuals with an invalid fitness. Second, it enters the
+    generational loop where the selection procedure is applied to entirely
+    replace the parental population. The 1:1 replacement ratio of this
+    algorithm **requires** the selection procedure to be stochastic and to
+    select multiple times the same individual, for example,
+    :func:`~deap.tools.selTournament` and :func:`~deap.tools.selRoulette`.
+    Third, it applies the :func:`varAnd` function to produce the next
+    generation population. Fourth, it evaluates the new individuals and
+    compute the statistics on this population. Finally, when *ngen*
+    generations are done, the algorithm returns a tuple with the final
+    population and a :class:`~deap.tools.Logbook` of the evolution.
+
+    .. note::
+
+        Using a non-stochastic selection method will result in no selection as
+        the operator selects *n* individuals from a pool of *n*.
+    
+    This function expects the :meth:`toolbox.mate`, :meth:`toolbox.mutate`,
+    :meth:`toolbox.select` and :meth:`toolbox.evaluate` aliases to be
+    registered in the toolbox.
+    
+    .. [Back2000] Back, Fogel and Michalewicz, "Evolutionary Computation 1 :
+       Basic Algorithms and Operators", 2000.
+    """
+    logbook = tools.Logbook()
+    logbook.header = ['gen', 'nevals'] + (stats.fields if stats else [])
+
+    # Evaluate the individuals with an invalid fitness
+    invalid_ind = [ind for ind in population if not ind.fitness.valid]
+    fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
+    for ind, fit in zip(invalid_ind, fitnesses):
+        ind.fitness.values = fit
+
+    if halloffame is not None:
+        halloffame.update(population)
+
+    record = stats.compile(population) if stats else {}
+    logbook.record(gen=0, nevals=len(invalid_ind), **record)
+    if verbose:
+        print logbook.stream
+
+    # Begin the generational process
+    for gen in range(1, ngen+1):
+        # Select the next generation individuals
+        offspring = toolbox.select(population, len(population))
+        
+        # Vary the pool of individuals
+        offspring = algorithms.varAnd(offspring, toolbox, cxpb, mutpb)
+        
+        # Evaluate the individuals with an invalid fitness
+        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+        fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
+        for ind, fit in zip(invalid_ind, fitnesses):
+            ind.fitness.values = fit
+        
+        # Update the hall of fame with the generated individuals
+        if halloffame is not None:
+            halloffame.update(offspring)
+            
+        # Replace the current population by the offspring
+        population[:] = offspring
+	
+	# MODIFIED BLOCK: Adds new agents based on the new offspring and goes through a game loop to set 		fitness values
+	game.reset()
+	for i in range(len(population)):
+		game.add_agent(Brain(population[i]))
+	game.game_loop(display=False)
+	game.generation += 1
+	
+	
+        # Append the current generation statistics to the logbook
+        record = stats.compile(population) if stats else {}
+        logbook.record(gen=gen, nevals=len(invalid_ind), **record)
+        if verbose:
+            print logbook.stream        
+
+    return population, logbook
+
 if __name__ == '__main__':
     g = Game()
+
+    creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+    creator.create("Individual", list, fitness=creator.FitnessMax)
+	
+    toolbox = base.Toolbox()
+    toolbox.register("attr_bool", random.uniform,-5,5)
+    toolbox.register("individual", tools.initRepeat, creator.Individual,
+                     toolbox.attr_bool, n=23)
+    toolbox.register("population", createPop, tools.initRepeat, list, toolbox.individual, g)
+    toolbox.register("evaluate", fitnessFunction, g)
+    toolbox.register("mate", crossOver)
+    toolbox.register("mutate", mutate, indpb=0.1)
+    toolbox.register("select", tools.selTournament, tournsize=3)
+
+    pop = toolbox.population()
+    result = modifiedEASimple(pop, toolbox, cxpb=.5, mutpb=.2, ngen=100, game = g, verbose = False)
+	
+    g.reset()
+
+    for i in range(c.game['n_agents']):
+        g.add_agent(Brain(result[0][i]))
+    
     g.game_loop()
     pygame.quit()

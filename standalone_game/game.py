@@ -105,6 +105,7 @@ class Game:
         self.agents     = []
         self.targets    = [T() for _ in range(c.game['n_targets'])]
         self.generation = 0
+	self.num	= 0
 
         # save terminal
         print "\033[?47h"
@@ -180,7 +181,7 @@ class Game:
 
     def update_terminal(self):
         print "\033[2J\033[H",
-        print c.game['g_name'],
+        print c.game['g_name'] + str(self.num),
         print "\tGEN.: " + str(self.generation),
         print "\tTIME: " + str(time.clock()) + '\n'
 	
@@ -225,7 +226,7 @@ def crossOver(individual1, individual2):
     return individual1,individual2
 	
 
-def createPop(initRepeat, nType, individual, game, n_neurons):
+def createPop(initRepeat, nType, individual, game, n_neurons, trialAverage, trialBest):
 
 	population = initRepeat(nType,individual,n=c.game['n_agents'])
 	if len(game.agents)==c.game['n_agents']:
@@ -233,10 +234,17 @@ def createPop(initRepeat, nType, individual, game, n_neurons):
 	for i in range(len(population)):
 		game.add_agent(Brain(population[i], n_neurons))
 	
-	'''displayd = False
-	if (game.generation%10==0):
-		displayd = True'''
 	game.game_loop(display=False)
+
+	totalFitness = 0
+	largest = 0
+	for i in range(c.game['n_agents']):
+		totalFitness += g.agents[i].fitness
+		if g.agents[i].fitness>largest:
+			largest = g.agents[i].fitness
+	averageFitness = totalFitness/c.game['n_agents']
+	trialAverage.append(averageFitness)
+	trialBest.append(largest)	
 	
 	game.generation +=1
 
@@ -246,7 +254,7 @@ def createPop(initRepeat, nType, individual, game, n_neurons):
  
 	return population
 
-def modifiedGA(population, toolbox,  hallOfFame, n_neurons, y, cxpb, mutpb, ngen, game):
+def modifiedGA(population, toolbox,  hallOfFame, n_neurons, trialAverage, trialBest, cxpb, mutpb, ngen, game):
 
     # Begin the generational process
     for gen in range(1, ngen+1):
@@ -268,19 +276,14 @@ def modifiedGA(population, toolbox,  hallOfFame, n_neurons, y, cxpb, mutpb, ngen
 	game.game_loop(display=False)
 
 	totalFitness = 0
+	largest = 0
 	for i in range(c.game['n_agents']):
 		totalFitness += g.agents[i].fitness
-
-	if game.generation == 10:
-		y[0].append(totalFitness)
-	if game.generation == 20:
-		y[1].append(totalFitness)
-	if game.generation == 30:
-		y[2].append(totalFitness)
-	if game.generation == 40:
-		y[3].append(totalFitness)
-	if game.generation == 50:
-		y[4].append(totalFitness)
+		if g.agents[i].fitness>largest:
+			largest = g.agents[i].fitness
+	averageFitness = totalFitness/c.game['n_agents']
+	trialAverage.append(averageFitness)
+	trialBest.append(largest)
 	
 
 	game.generation += 1
@@ -289,53 +292,75 @@ def modifiedGA(population, toolbox,  hallOfFame, n_neurons, y, cxpb, mutpb, ngen
     return population
 
 if __name__ == '__main__':
-
-    x = [3,4,5,6,7,8,9,10]
-    y = [[],[],[],[],[]]
-
-    for i in range(len(x)):
-
-	n_neurons = x[i]
 	
-	g = Game()
+	generation = []
+	for i in range(101):
+		generation.append(i)
+	averageFitness = []
+	bestFitness = []
+	for i in range(3):
+		trialAverage = []
+		trialBest = []
+		n_neurons = 5
 
-	creator.create("FitnessMax", base.Fitness, weights=(1.0,))
-	creator.create("Individual", list, fitness=creator.FitnessMax)
+		g = Game()
+		g.num = i
 
-	toolbox = base.Toolbox()
-	toolbox.register("attr_bool", random.uniform,-5,5)
-	toolbox.register("individual", tools.initRepeat, creator.Individual,
-		     toolbox.attr_bool, n=7*n_neurons+2)
-	toolbox.register("population", createPop, tools.initRepeat, list, toolbox.individual, g, n_neurons)
-	toolbox.register("evaluate", fitnessFunction, g)
-	toolbox.register("mate", crossOver)
-	toolbox.register("mutate", mutate, indpb=0.1)
-	toolbox.register("select", tools.selTournament, tournsize=3)
+		creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+		creator.create("Individual", list, fitness=creator.FitnessMax)
 
-	pop = toolbox.population()
-	hallOfFame = tools.HallOfFame(1)
-	hallOfFame.update(pop)
-	result = modifiedGA(pop, toolbox, hallOfFame, n_neurons, y, cxpb=.5, mutpb=.2, ngen=50, game = g)
+		toolbox = base.Toolbox()
+		toolbox.register("attr_bool", random.uniform,-5,5)
+		toolbox.register("individual", tools.initRepeat, creator.Individual,
+			     toolbox.attr_bool, n=7*n_neurons+2)
+		toolbox.register("population", createPop, tools.initRepeat, list, toolbox.individual, g, n_neurons,trialAverage,trialBest)
+		toolbox.register("evaluate", fitnessFunction, g)
+		toolbox.register("mate", crossOver)
+		toolbox.register("mutate", mutate, indpb=0.1)
+		toolbox.register("select", tools.selTournament, tournsize=3)
 
+		pop = toolbox.population()
+		hallOfFame = tools.HallOfFame(1)
+		hallOfFame.update(pop)
+		result = modifiedGA(pop, toolbox, hallOfFame, n_neurons, trialAverage, trialBest, cxpb=.5, mutpb=.2, ngen=100, game = g)
+		
+		averageFitness.append(trialAverage)
+		bestFitness.append(trialBest)
 
-    print(y)
-    y1 = y[0]
-    y2 = y[1]
-    y3 = y[2]
-    y4 = y[3]
-    y5 = y[4]
-    plt.plot(x,y1,"b--",label="Gen 10")
-    plt.plot(x,y2,"g--",label="Gen 20")
-    plt.plot(x,y3,"r--",label="Gen 30")
-    plt.plot(x,y4,"c--",label="Gen 40")
-    plt.plot(x,y5,"m--",label="Gen 50")
-    plt.legend(loc="upper left")
-    plt.axis([0,11,0,1000])
-    plt.xlabel("Hidden Layer Neurons")
-    plt.ylabel("Total Fitness")
-    plt.title("Overall Fitness vs. # Neurons")
-    plt.show()
+	plt.figure(1)
+	y1 = averageFitness[0]
+	y2 = averageFitness[1]
+	y3 = averageFitness[2]
+	plt.plot(generation,y1,"b--",label="Trial1")
+	plt.plot(generation,y2,"g--",label="Trial2")
+	plt.plot(generation,y3,"r--",label="Trial3")
+	plt.legend(loc="upper left")
+	plt.axis([0,100,0,100])
+	plt.xlabel("Generation")
+	plt.ylabel("Average Fitness")
+	plt.title("Average Fitness vs. Generation")
+
+	plt.figure(2)
+	y4 = bestFitness[0]
+	y5 = bestFitness[1]
+	y6 = bestFitness[2]
+	plt.plot(generation,y4,"b--",label="Trial1")
+	plt.plot(generation,y5,"g--",label="Trial2")
+	plt.plot(generation,y6,"r--",label="Trial3")
+	plt.legend(loc="upper left")
+	plt.axis([0,100,0,100])
+	plt.xlabel("Generation")
+	plt.ylabel("Best Fitness")
+	plt.title("Best Fitnesses vs. Generation")
+
+	plt.show()
+
+	print("Average Fitness Data:")
+	print(averageFitness)
+	print("Best Fitness Data:")
+	print(bestFitness)
+
     
-    pygame.quit()
+    	pygame.quit()
     
 	
